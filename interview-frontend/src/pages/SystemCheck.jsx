@@ -10,6 +10,11 @@ const SystemCheck = ({ onComplete }) => {
     const videoRef = useRef(null);
     const [stream, setStream] = useState(null);
 
+    // ATS State
+    const [jobDescription, setJobDescription] = useState('');
+    const [atsResult, setAtsResult] = useState(null);
+    const [analyzing, setAnalyzing] = useState(false);
+
     useEffect(() => {
         checkDevices();
         return () => {
@@ -69,6 +74,25 @@ const SystemCheck = ({ onComplete }) => {
         setLoading(false);
     };
 
+    const handleATSAnalyze = async () => {
+        setAnalyzing(true);
+        setAtsResult(null);
+        try {
+            const formData = new FormData();
+            formData.append('resume', resumeFile);
+            formData.append('job_description', jobDescription);
+
+            const response = await axios.post('http://localhost:8000/ats/evaluate', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            setAtsResult(response.data);
+        } catch (err) {
+            console.error(err);
+            setError("ATS Analysis failed. Please try again.");
+        }
+        setAnalyzing(false);
+    };
+
     const allChecksPassed = checks.mic && checks.camera && checks.speaker && resumeFile;
 
     return (
@@ -109,6 +133,23 @@ const SystemCheck = ({ onComplete }) => {
 
                 {/* Column 2: Checks and Actions */}
                 <div className="space-y-6">
+                    {/* ATS Navigation Card */}
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 rounded-xl shadow-lg border border-blue-500 text-white relative overflow-hidden">
+                        <div className="relative z-10">
+                            <h3 className="font-bold text-lg mb-2 flex items-center gap-2">
+                                <Shield className="w-5 h-5" /> Job Fit Analysis (ATS)
+                            </h3>
+                            <p className="text-blue-100 text-sm mb-4">
+                                Want to check if your resume matches the job description before starting? Use our AI-powered ATS scanner.
+                            </p>
+                            <a href="/ats-check" className="inline-flex items-center gap-2 bg-white text-blue-700 px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-50 transition-colors shadow-md">
+                                <Shield className="w-4 h-4" /> Open ATS Scanner <ArrowRight className="w-4 h-4" />
+                            </a>
+                        </div>
+                        {/* Decorative background circle */}
+                        <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+                    </div>
+
                     {/* Audio Check Card */}
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                         <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
