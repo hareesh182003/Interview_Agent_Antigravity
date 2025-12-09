@@ -1,0 +1,27 @@
+fastapi
+uvicorn
+python-multipart
+boto3
+langgraph
+langchain
+langchain-aws
+langchain-community
+chromadb
+python-dotenv
+pydantic
+requests
+pypdf
+
+# Frontend Dependencies (Node.js)
+# Run: cd interview-frontend && npm install
+# - react
+# - react-dom
+# - vite
+# - tailwindcss
+# - postcss
+# - autoprefixer
+# - lucide-react
+# - axios
+# - framer-motion
+# - clsx
+# - tailwind-merge
