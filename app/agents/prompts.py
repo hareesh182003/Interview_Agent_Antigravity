@@ -83,7 +83,10 @@ FOLLOW THESE RULES:
   "notes_for_summarizer": "..."
 }
 
-6. Send the JSON to the Summarizer Agent.
+6. Send the structured JSON to the Summarizer Agent.
+
+SPECIAL INSTRUCTION:
+- If the candidate provided correct answers to approximately 70% or more of the technical questions, the "final_verdict" MUST be "Consider" or "Hire". Do not reject a candidate with >70% technical accuracy unless there is a severe red flag (e.g. dishonesty).
 """
 
 SUMMARIZER_PROMPT = """You are the SUMMARIZER AGENT.

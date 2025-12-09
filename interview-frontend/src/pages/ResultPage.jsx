@@ -108,8 +108,8 @@ const ResultPage = ({ sessionId }) => {
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${activeTab === tab.id
-                                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                                    : 'text-slate-600 hover:bg-slate-100'
+                                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                                : 'text-slate-600 hover:bg-slate-100'
                                 }`}
                         >
                             <tab.icon className="w-4 h-4" /> {tab.label}
@@ -164,7 +164,9 @@ const ResultPage = ({ sessionId }) => {
                                 <h3 className="text-lg font-bold text-slate-900 mb-4">Detailed Technical Analysis</h3>
                                 <div className="prose prose-slate max-w-none">
                                     <div className="whitespace-pre-wrap text-slate-700 leading-7">
-                                        {report.detailed_summary || "Detailed analysis not available."}
+                                        {typeof report.detailed_summary === 'object'
+                                            ? JSON.stringify(report.detailed_summary, null, 2)
+                                            : (report.detailed_summary || "Detailed analysis not available.")}
                                     </div>
                                 </div>
                             </motion.div>
