@@ -53,13 +53,26 @@ FOLLOW THESE RULES:
    "technical_score": 0-10,
    "communication_score": 0-10,
    "confidence_score": 0-10,
-   "overall_score": weighted average (40% technical, 30% HR, 20% communication, 10% confidence)
-4. Identify red flags:
+   "overall_score": Calculate a weighted average (40% technical, 30% HR, 20% communication, 10% confidence). Scale to 0-100% for the final verdict.
+
+4. ASSIGN FINAL VERDICT BASED ON THIS TABLE (Strict Adherence):
+   | Score Range | Ideal Label           |
+   | ----------- | --------------------- |
+   | ≥ 90%       | Strong Hire           |
+   | 80–89%      | Hire                  |
+   | 70–79%      | Consider              |
+   | 50–69%      | Needs Improvement     |
+   | < 50%       | Not Suitable          |
+
+   CRITICAL: The cut-off for a positive outcome is 70%. Any score below 70% must be "Needs Improvement" or "Not Suitable".
+
+5. Identify red flags:
    - Wrong technical answers
    - No real clarity
    - Extremely short answers
    - Dishonesty signals
-5. Output ONLY JSON in this structure:
+
+6. Output ONLY JSON in this structure:
 
 {
   "evaluation_per_answer": [
@@ -68,7 +81,8 @@ FOLLOW THESE RULES:
       "answer": "...",
       "hr_quality": "...",
       "technical_quality": "...",
-      "score": 0-10
+      "score": 0-10,
+      "feedback": "Specific feedback for this answer"
     }
   ],
   "section_scores": {
@@ -76,17 +90,14 @@ FOLLOW THESE RULES:
     "technical_score": 0-10,
     "communication_score": 0-10,
     "confidence_score": 0-10,
-    "overall_score": 0-10
+    "overall_score": 0-100
   },
   "red_flags": [...],
-  "final_verdict": "Hire / Consider / Reject",
+  "final_verdict": "Strong Hire / Hire / Consider / Needs Improvement / Not Suitable",
   "notes_for_summarizer": "..."
 }
 
-6. Send the structured JSON to the Summarizer Agent.
-
-SPECIAL INSTRUCTION:
-- If the candidate provided correct answers to approximately 70% or more of the technical questions, the "final_verdict" MUST be "Consider" or "Hire". Do not reject a candidate with >70% technical accuracy unless there is a severe red flag (e.g. dishonesty).
+7. Send the structured JSON to the Summarizer Agent.
 """
 
 SUMMARIZER_PROMPT = """You are the SUMMARIZER AGENT.

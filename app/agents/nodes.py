@@ -31,13 +31,19 @@ Instruction: The interview is over. Say the closing phrase and output the JSON m
 IMPORTANT: Your output MUST contain the JSON block within ```json ... ``` or just valid JSON at the end.
 """
     else:
+        # Dynamic instruction to prevent looping intro
+        if question_count == 0:
+             additional_instruction = "The Candidate has already been greeted. Do NOT greet again (e.g. 'Hello', 'Welcome'). Start immediately with the first Question."
+        else:
+             additional_instruction = "Ask the next question or follow-up."
+
         prompt = f"""{INTERVIEWER_PROMPT}
 
 CONVERSATION HISTORY:
 {history_text}
 
 Status: You have asked {question_count} questions. 
-Instruction: Ask the next question or follow-up. Do not switch to JSON mode yet. Output only the natural language response.
+Instruction: {additional_instruction} Do not switch to JSON mode yet. Output only the natural language response.
 """
 
     response = llm_service.invoke_model(INTERVIEWER_PROMPT, prompt)
@@ -156,10 +162,13 @@ EVALUATION DATA:
         }
     
     # Merge scores from evaluation into the final summary for Frontend display
-    # Frontend expects: confidence_score, technical_rating, communication_rating
     scores = evaluation.get("section_scores", {})
     summary["technical_rating"] = scores.get("technical_score", 0)
     summary["communication_rating"] = scores.get("communication_score", 0)
     summary["confidence_score"] = scores.get("confidence_score", 0)
+    summary["overall_score"] = scores.get("overall_score", 0)
+
+    # Pass the detailed evaluation per answer for the "Technical Deep Dive" tab
+    summary["evaluation_per_answer"] = evaluation.get("evaluation_per_answer", [])
 
     return {"summary": summary, "next_node": "END"}

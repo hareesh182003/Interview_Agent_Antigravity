@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import SystemCheck from './pages/SystemCheck';
+import LandingPage from './pages/LandingPage';
+import PreInterviewCheck from './pages/PreInterviewCheck';
 import InterviewSession from './pages/InterviewSession';
 import ResultPage from './pages/ResultPage';
 import ATSCheck from './pages/ATSCheck';
@@ -58,7 +59,8 @@ const AppContent = () => {
       {/* Main Content Area */}
       <main className="flex-1 w-full mx-auto">
         <Routes>
-          <Route path="/" element={<SystemCheckWrapper />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/check" element={<PreInterviewCheckWrapper />} />
           <Route path="/ats-check" element={<ATSCheck />} />
           <Route path="/interview" element={<InterviewSessionWrapper />} />
           <Route path="/result" element={<ResultPageWrapper />} />
@@ -78,13 +80,13 @@ const AppContent = () => {
 // Wrappers to adapt old prop-based components to Route components
 import { useNavigate } from 'react-router-dom';
 
-const SystemCheckWrapper = () => {
+const PreInterviewCheckWrapper = () => {
   const navigate = useNavigate();
   const handleComplete = (sessionId, initialAudio) => {
     // Navigate with state
     navigate('/interview', { state: { sessionId, initialAudio } });
   };
-  return <SystemCheck onComplete={handleComplete} />;
+  return <PreInterviewCheck onComplete={handleComplete} />;
 };
 
 const InterviewSessionWrapper = () => {
