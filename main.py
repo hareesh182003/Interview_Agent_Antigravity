@@ -214,6 +214,62 @@ async def get_report(session_id: str):
          raise HTTPException(status_code=404, detail="Session not found")
     return data.get("summary")
 
+@app.post("/ats/evaluate")
+async def evaluate_resume(
+    resume: UploadFile = File(...),
+    job_description: str = Form(...)
+):
+    try:
+        content = await resume.read()
+        import io
+        from pypdf import PdfReader
+        from app.services.llm_service import llm_service
+        from app.agents.prompts import ATS_SCANNER_PROMPT
+        
+        resume_text = ""
+        try:
+            reader = PdfReader(io.BytesIO(content))
+            for page in reader.pages:
+                resume_text += page.extract_text() + "\n"
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to parse PDF: {str(e)}")
+
+        prompt = ATS_SCANNER_PROMPT.format(
+            job_description_text=job_description,
+            resume_text=resume_text
+        )
+        
+        response = llm_service.invoke_model(ATS_SCANNER_PROMPT, prompt)
+        
+        import re
+        json_match = re.search(r"```json(.*?)```", response, re.DOTALL)
+        result = {}
+        if json_match:
+            try:
+                result = json.loads(json_match.group(1).strip())
+            except:
+                pass
+        else:
+            try:
+                 result = json.loads(response)
+            except:
+                pass
+                
+        if not result:
+             # Fallback
+             result = {
+                 "match_percentage": 0,
+                 "status": "Error",
+                 "missing_keywords": [],
+                 "analysis_summary": "Failed to generate analysis.",
+                 "recommendation": "Please try again."
+             }
+             
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
