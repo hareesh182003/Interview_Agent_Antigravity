@@ -33,24 +33,42 @@ class VoiceService:
         # Alternative: Use a public library or just assume S3 bucket is 'interview-bot-audio-bucket' (User might need to create it).
         # Let's try to search for an existing bucket or create one? No, that's risky.
         # I will document this dependency.
-        self.bucket_name = "interview-bot-audio-temp-" + str(uuid.uuid4())[:8] # Randomize to avoid conflict
+        # Fixed bucket name for reuse. Note: S3 buckets must be lowercase and use hyphens.
+        self.bucket_name = "interview-agent-aws-ghr"
         self._ensure_bucket()
-
     def _ensure_bucket(self):
+        region = os.getenv("AWS_REGION")
+
         try:
-            region = os.getenv("AWS_REGION")
-            if region == 'us-east-1':
+            # 1. Check if bucket already exists (and you own it)
+            self.s3_client.head_bucket(Bucket=self.bucket_name)
+            print(f"DEBUG: Bucket {self.bucket_name} already exists and is accessible.")
+            return
+
+        except self.s3_client.exceptions.NoSuchBucket:
+            # Bucket does not exist, create it
+            pass
+
+        except Exception as e:
+            # Some other issue (permissions, wrong creds, etc.)
+            print(f"ERROR: Unable to access bucket {self.bucket_name}: {e}")
+            return
+
+        try:
+            # 2. Create bucket if it doesn't exist
+            if region == "us-east-1":
                 self.s3_client.create_bucket(Bucket=self.bucket_name)
             else:
                 self.s3_client.create_bucket(
-                    Bucket=self.bucket_name, 
-                    CreateBucketConfiguration={'LocationConstraint': region}
+                    Bucket=self.bucket_name,
+                    CreateBucketConfiguration={"LocationConstraint": region}
                 )
+
             print(f"DEBUG: Created bucket {self.bucket_name} in {region}")
+
         except Exception as e:
-            # If bucket already exists or other error
-            print(f"DEBUG: Error creating/checking bucket {self.bucket_name}: {e}")
-            pass
+            print(f"ERROR: Failed to create bucket {self.bucket_name}: {e}")
+
 
     def speak_text(self, text: str) -> bytes:
         """Converts text to speech using AWS Polly."""
