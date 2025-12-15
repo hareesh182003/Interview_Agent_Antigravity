@@ -35,21 +35,21 @@ const AppContent = () => {
           </Link>
 
           {/* Simplified Nav Steps for Interview Flow */}
-          {location.pathname !== '/ats-check' && (
+          {location.pathname !== '/' && (
             <div className="flex items-center gap-6 text-sm font-medium text-slate-500 hidden md:flex">
-              <div className={`flex items-center gap-2 ${location.pathname === '/' ? 'text-blue-600' : ''}`}>
+              <div className={`flex items-center gap-2 ${location.pathname === '/ats-check' ? 'text-blue-600' : ''}`}>
                 <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-xs">1</span>
-                System Check
+                ATS Screening
               </div>
               <div className="w-8 h-[1px] bg-slate-200"></div>
               <div className={`flex items-center gap-2 ${location.pathname === '/interview' ? 'text-blue-600' : ''}`}>
                 <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-xs">2</span>
-                Interview
+                Technical Interview
               </div>
               <div className="w-8 h-[1px] bg-slate-200"></div>
               <div className={`flex items-center gap-2 ${location.pathname === '/result' ? 'text-blue-600' : ''}`}>
                 <span className="w-6 h-6 rounded-full border-2 border-current flex items-center justify-center text-xs">3</span>
-                Results
+                Analysis Report
               </div>
             </div>
           )}
@@ -77,7 +77,8 @@ const AppContent = () => {
   );
 };
 
-// Wrappers to adapt old prop-based components to Route components
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
 const PreInterviewCheckWrapper = () => {
@@ -92,23 +93,60 @@ const PreInterviewCheckWrapper = () => {
 const InterviewSessionWrapper = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { sessionId, initialAudio } = location.state || {}; // Handle missing state?
+  const state = location.state || {};
 
-  if (!sessionId) {
-    // Redirect to start if no session
+  const [sessionData, setSessionData] = useState({
+    sessionId: state.sessionId,
+    initialAudio: state.initialAudio
+  });
+  const [initializing, setInitializing] = useState(!!state.admissionToken && !state.sessionId);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (state.admissionToken && !sessionData.sessionId) {
+      const initSession = async () => {
+        try {
+          const response = await axios.post('http://localhost:8000/interview/init', {}, {
+            headers: { Authorization: `Bearer ${state.admissionToken}` }
+          });
+          setSessionData({
+            sessionId: response.data.session_id,
+            initialAudio: response.data.audio_base64
+          });
+        } catch (err) {
+          console.error(err);
+          setError("Failed to verify admission token. Please try again.");
+        } finally {
+          setInitializing(false);
+        }
+      };
+      initSession();
+    }
+  }, [state.admissionToken]);
+
+  if (initializing) {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-4">
-        <p>No active session found.</p>
-        <button onClick={() => navigate('/')} className="text-blue-600 underline">Start New</button>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <p className="text-slate-500 animate-pulse">Verifying Admission Token & Initializing Secure Session...</p>
+      </div>
+    );
+  }
+
+  if (error || !sessionData.sessionId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen gap-4">
+        <p className="text-red-500 font-medium">{error || "No active session found."}</p>
+        <button onClick={() => navigate('/')} className="text-blue-600 underline">Return to Start</button>
       </div>
     );
   }
 
   const handleComplete = () => {
-    navigate('/result', { state: { sessionId } });
+    navigate('/result', { state: { sessionId: sessionData.sessionId } });
   };
 
-  return <InterviewSession sessionId={sessionId} initialAudio={initialAudio} onComplete={handleComplete} />;
+  return <InterviewSession sessionId={sessionData.sessionId} initialAudio={sessionData.initialAudio} onComplete={handleComplete} />;
 };
 
 const ResultPageWrapper = () => {

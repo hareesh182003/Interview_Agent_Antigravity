@@ -1,7 +1,26 @@
 import json
+import re
 from app.services.llm_service import llm_service
 from app.agents.prompts import INTERVIEWER_PROMPT, EVALUATOR_PROMPT, SUMMARIZER_PROMPT
 from app.agents.state import InterviewState
+
+def extract_json(response: str):
+    """Helper to extract JSON from LLM response"""
+    try:
+        # First try finding markdown json block
+        json_match = re.search(r"```json(.*?)```", response, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group(1).strip())
+        
+        # Then try just finding { ... }
+        start = response.find('{')
+        end = response.rfind('}') + 1
+        if start != -1 and end != -1:
+            return json.loads(response[start:end])
+            
+        return None
+    except:
+        return None
 
 def interviewer_node(state: InterviewState):
     messages = state.get('messages', [])
@@ -18,24 +37,25 @@ def interviewer_node(state: InterviewState):
         content = msg['content']
         history_text += f"{role.upper()}: {content}\n"
     
-    # Determine if we should end the interview
-    if question_count >= 5:
-        # Prompt LLM to finalize and output JSON
+    # Max question limit (increased to 15 as per new prompt)
+    MAX_QUESTIONS = 15
+    
+    if question_count >= MAX_QUESTIONS:
+        # Force termination
         prompt = f"""{INTERVIEWER_PROMPT}
 
 CONVERSATION HISTORY:
 {history_text}
 
 Status: You have asked {question_count} questions. 
-Instruction: The interview is over. Say the closing phrase and output the JSON memory as defined in the rules. 
-IMPORTANT: Your output MUST contain the JSON block within ```json ... ``` or just valid JSON at the end.
+Instruction: The limit has been reached. Force the end of the interview. Say the closing phrase and output the final JSON immediately.
 """
     else:
-        # Dynamic instruction to prevent looping intro
+        # Normal flow
         if question_count == 0:
-             additional_instruction = "The Candidate has already been greeted. Do NOT greet again (e.g. 'Hello', 'Welcome'). Start immediately with the first Question."
+             additional_instruction = "The Candidate has already been greeted. Start immediately with the first Question of the Introduction phase."
         else:
-             additional_instruction = "Ask the next question or follow-up."
+             additional_instruction = "Continue the interview phases. Ask the next question or follow-up. If you have sufficient data, you may choose to end the interview now."
 
         prompt = f"""{INTERVIEWER_PROMPT}
 
@@ -43,25 +63,35 @@ CONVERSATION HISTORY:
 {history_text}
 
 Status: You have asked {question_count} questions. 
-Instruction: {additional_instruction} Do not switch to JSON mode yet. Output only the natural language response.
+Instruction: {additional_instruction}
 """
 
     response = llm_service.invoke_model(INTERVIEWER_PROMPT, prompt)
     
     # Check if response contains JSON (interview termination)
-    import re
-    json_match = re.search(r"```json(.*?)```", response, re.DOTALL)
-    if json_match:
-        try:
-            json_str = json_match.group(1).strip()
-            interview_data = json.loads(json_str)
-            return {"interview_data": interview_data, "next_node": "evaluator", "messages": messages + [{"role": "assistant", "content": "Thank you. I will now pass your responses for evaluation."}]} 
-        except:
-             # Fallback if JSON parsing fails
-             return {"interview_data": {}, "next_node": "evaluator", "messages": messages + [{"role": "assistant", "content": "Thank you. The interview is now finished. Please wait for your results."}]}
-    elif question_count >= 5:
-        # If we hit the limit but didn't get JSON, force move to evaluator with empty data
-        return {"interview_data": {}, "next_node": "evaluator", "messages": messages + [{"role": "assistant", "content": "Thank you. The interview is now finished. Please wait for your results."}]}
+    # The new prompt says "Say closing phrase... then silently output JSON".
+    interview_data = extract_json(response)
+    
+    if interview_data:
+        # We found JSON, so the interview is done.
+        # We need to extract the "Thank you" message to show the user.
+        # We found JSON, so the interview is done.
+        # Force a clean exit message to prevent the bot from reading the JSON aloud.
+        text_content = "Thank you for your time. I have gathered all the necessary information. We will now generate your performance report."
+
+        return {
+            "interview_data": interview_data, 
+            "next_node": "evaluator", 
+            "messages": messages + [{"role": "assistant", "content": text_content}]
+        }
+        
+    elif question_count >= MAX_QUESTIONS:
+        # If we hit limit but no JSON, force move to evaluator
+        return {
+            "interview_data": {"note": "Interview forced end via max questions"}, 
+            "next_node": "evaluator", 
+            "messages": messages + [{"role": "assistant", "content": "Thank you. The interview is now finished."}]
+        }
     
     # Normal conversation flow
     return {
@@ -73,55 +103,34 @@ Instruction: {additional_instruction} Do not switch to JSON mode yet. Output onl
 def evaluator_node(state: InterviewState):
     interview_data = state.get('interview_data', {})
     
+    # We pass the interview_transcript (if available) or raw messages
+    transcript_data = interview_data.get('interview_transcript', state['messages'])
+    
     prompt = f"""{EVALUATOR_PROMPT}
 
-INTERVIEW DATA:
-{json.dumps(interview_data, indent=2)}
+INTERVIEW TRANSCRIPT DATA:
+{json.dumps(transcript_data, indent=2)}
 
-FULL TRANSCRIPT:
-{state['messages']}
-
-Note: If INTERVIEW DATA is empty, please rely entirely on the FULL TRANSCRIPT to generate the evaluation.
+CANDIDATE NAME: {interview_data.get('candidate_name', 'Unknown')}
+INTERVIEWER OBS: {interview_data.get('interviewer_observation', 'None')}
 """
     response = llm_service.invoke_model(EVALUATOR_PROMPT, prompt)
     
-    # Extract JSON
-    import re
-    json_match = re.search(r"```json(.*?)```", response, re.DOTALL)
-    evaluation = {}
+    evaluation = extract_json(response)
     
-    try:
-        if json_match:
-            evaluation = json.loads(json_match.group(1).strip())
-        else:
-             # Try to parse raw response if it's just JSON
-             evaluation = json.loads(response)
-    except:
-        print("Failed to parse Evaluator JSON")
-        # Try a more aggressive cleanup if simple load fails
-        try:
-            # Find the first { and last }
-            start = response.find('{')
-            end = response.rfind('}') + 1
-            if start != -1 and end != -1:
-                evaluation = json.loads(response[start:end])
-        except:
-            pass
-
-    # Fallback if evaluation is still empty
     if not evaluation:
         evaluation = {
-            "evaluation_per_answer": [],
-            "section_scores": {
-                "hr_score": 0,
+            "detailed_analysis": [],
+            "category_scores": {
                 "technical_score": 0,
                 "communication_score": 0,
-                "confidence_score": 0,
-                "overall_score": 0
+                "soft_skills_score": 0
             },
-            "red_flags": ["Evaluation generation failed"],
-            "final_verdict": "Consider",
-            "notes_for_summarizer": "The evaluator failed to produce a structured output. Please review the transcript."
+            "overall_weighted_score": 0,
+            "strengths": [],
+            "weaknesses": ["Analysis failed"],
+            "red_flags": [],
+            "final_verdict": "Consider"
         }
 
     return {"evaluation": evaluation, "next_node": "summarizer"}
@@ -136,39 +145,51 @@ EVALUATION DATA:
 """
     response = llm_service.invoke_model(SUMMARIZER_PROMPT, prompt)
     
-    import re
-    json_match = re.search(r"```json(.*?)```", response, re.DOTALL)
-    summary = {}
+    summary = extract_json(response)
     
-    try:
-        if json_match:
-            summary = json.loads(json_match.group(1).strip())
-        else:
-            summary = json.loads(response)
-    except:
-        try:
-            start = response.find('{')
-            end = response.rfind('}') + 1
-            if start != -1 and end != -1:
-                summary = json.loads(response[start:end])
-        except:
-             pass
-             
     if not summary:
         summary = {
-            "short_summary": "We encountered an issue generating the summary.",
-            "detailed_summary": "Please review the raw interview data as the automated summary generation failed.",
-            "verdict": "Consider"
+            "candidate_profile": {"name": "Unknown", "overall_rating": "0/100", "recommendation": "Consider"},
+            "executive_summary": "Issue generating summary.",
+            "key_findings": {},
+            "interview_highlights": []
         }
     
-    # Merge scores from evaluation into the final summary for Frontend display
-    scores = evaluation.get("section_scores", {})
+    # --- MAPPING for Frontend Compatibility ---
+    # Frontend expects: technical_rating, communication_rating, confidence_score, overall_score, short_summary
+    
+    scores = evaluation.get("category_scores", {})
     summary["technical_rating"] = scores.get("technical_score", 0)
     summary["communication_rating"] = scores.get("communication_score", 0)
-    summary["confidence_score"] = scores.get("confidence_score", 0)
-    summary["overall_score"] = scores.get("overall_score", 0)
+    
+    # Map 'soft_skills_score' (from new prompt) to 'confidence_score' (Frontend expectation)
+    summary["confidence_score"] = scores.get("soft_skills_score", 0)
+    
+    summary["overall_score"] = evaluation.get("overall_weighted_score", 0)
+    
+    # Verdict location varies between prompt versions
+    # New prompt: evaluation.final_verdict OR summary.candidate_profile.recommendation
+    summary["verdict"] = evaluation.get("final_verdict", 
+                                      summary.get("candidate_profile", {}).get("recommendation", "Consider"))
+    
+    # Map 'executive_summary' -> 'short_summary'
+    summary["short_summary"] = summary.get("executive_summary", "")
 
-    # Pass the detailed evaluation per answer for the "Technical Deep Dive" tab
-    summary["evaluation_per_answer"] = evaluation.get("evaluation_per_answer", [])
+    # Map 'detailed_analysis' -> 'evaluation_per_answer'
+    # Prompt: detailed_analysis = [{question, answer_summary, category, rating, reasoning}]
+    # Frontend: evaluation_per_answer = [{question, score, technical_quality, feedback, answer}]
+    
+    raw_analysis = evaluation.get("detailed_analysis", [])
+    mapped_analysis = []
+    for item in raw_analysis:
+        mapped_analysis.append({
+            "question": item.get("question", ""),
+            "answer": item.get("answer_summary", ""), # Map answer_summary to answer
+            "score": item.get("rating", 0),
+            "technical_quality": item.get("reasoning", ""), # Use reasoning for technical quality slot
+            "feedback": item.get("reasoning", ""), 
+            "hr_quality": item.get("category", "") # Store category here
+        })
+    summary["evaluation_per_answer"] = mapped_analysis
 
     return {"summary": summary, "next_node": "END"}

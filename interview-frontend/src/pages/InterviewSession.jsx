@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { Mic, MicOff, PhoneOff, Loader2, Video, MoreVertical, MessageSquare, User, AudioLines, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -9,6 +10,8 @@ const InterviewSession = ({ sessionId, initialAudio, onComplete }) => {
     const [audioUrl, setAudioUrl] = useState(null);
     const [isFinishing, setIsFinishing] = useState(false);
     const [showTranscript, setShowTranscript] = useState(false);
+
+    const navigate = useNavigate();
 
     // Fake audio visualizer bars
     const [audioBars, setAudioBars] = useState(new Array(5).fill(10));
@@ -20,6 +23,7 @@ const InterviewSession = ({ sessionId, initialAudio, onComplete }) => {
     const hasPlayedRef = useRef(false);
     const streamRef = useRef(null);
 
+    // Separate useEffect for Camera (Mount/Unmount only)
     useEffect(() => {
         if (initialAudio && !hasPlayedRef.current) {
             hasPlayedRef.current = true;
@@ -27,7 +31,13 @@ const InterviewSession = ({ sessionId, initialAudio, onComplete }) => {
         }
         setupCamera();
 
-        // Visualizer animation ticker
+        return () => {
+            stopCamera();
+        };
+    }, []);
+
+    // Effect for Audio Visualizer (Runs on status change)
+    useEffect(() => {
         const interval = setInterval(() => {
             if (status === 'speaking' || status === 'listening') {
                 setAudioBars(prev => prev.map(() => Math.floor(Math.random() * 40) + 10));
@@ -36,13 +46,20 @@ const InterviewSession = ({ sessionId, initialAudio, onComplete }) => {
             }
         }, 100);
 
-        return () => {
-            clearInterval(interval);
-            if (streamRef.current) {
-                streamRef.current.getTracks().forEach(track => track.stop());
-            }
-        };
+        return () => clearInterval(interval);
     }, [status]);
+
+    const stopCamera = () => {
+        if (streamRef.current) {
+            console.log("Stopping all camera tracks...");
+            streamRef.current.getTracks().forEach(track => {
+                track.stop();
+                console.log(`Track ${track.label} stopped.`);
+            });
+            streamRef.current = null;
+            if (videoRef.current) videoRef.current.srcObject = null;
+        }
+    };
 
     const setupCamera = async () => {
         try {
@@ -70,7 +87,10 @@ const InterviewSession = ({ sessionId, initialAudio, onComplete }) => {
 
         audioPlayerRef.current.onended = () => {
             setStatus('idle');
-            if (isFinishing && onComplete) onComplete();
+            if (isFinishing) {
+                stopCamera();
+                if (onComplete) onComplete();
+            }
         };
     };
 
@@ -257,7 +277,7 @@ const InterviewSession = ({ sessionId, initialAudio, onComplete }) => {
                         )}
                     </div>
 
-                    <button onClick={() => window.location.reload()} className="p-3 rounded-full hover:bg-red-500/20 text-red-500 transition-colors">
+                    <button onClick={() => { stopCamera(); navigate('/'); }} className="p-3 rounded-full hover:bg-red-500/20 text-red-500 transition-colors">
                         <PhoneOff className="w-6 h-6" />
                     </button>
                 </div>

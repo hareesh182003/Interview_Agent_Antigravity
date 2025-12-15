@@ -11,6 +11,7 @@ python-dotenv
 pydantic
 requests
 pypdf
+python-jose[cryptography]
 
 # Frontend Dependencies (Node.js)
 # Run: cd interview-frontend && npm install

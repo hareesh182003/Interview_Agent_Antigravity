@@ -147,6 +147,26 @@ const ATSCheck = () => {
                                 {analyzing ? <Loader2 className="animate-spin" /> : <>Run Suitability Analysis</>}
                             </button>
 
+                            {/* Qualification Action */}
+                            {atsResult && atsResult.match_percentage >= 75 && (
+                                <div className="mt-8 pt-8 border-t border-slate-100 animate-fadeIn">
+                                    <div className="bg-green-50 border border-green-100 p-4 rounded-xl flex flex-col gap-3">
+                                        <div className="flex items-center gap-2 text-green-800 font-bold">
+                                            <CheckCircle className="w-5 h-5" /> Qualified for Interview
+                                        </div>
+                                        <p className="text-sm text-green-700">
+                                            Congratulations! Your profile matches our requirements. You have been granted an admission token.
+                                        </p>
+                                        <button
+                                            onClick={() => navigate('/interview', { state: { admissionToken: atsResult.admission_token } })}
+                                            className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-slate-900/20"
+                                        >
+                                            Proceed to Technical Round <ArrowRight className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                         </div>
 
                         {/* Result Panel */}
